@@ -130,9 +130,6 @@ app.post('/api/contact', async (req, res) => {
     }
 });
 
-const PORT = 5001;
-app.listen(PORT, () => console.log(`Backend running on http://localhost:${PORT}`));
-
 app.post("/upload", upload.single("file"), async (req, res) => {
   try {
     // 1. Validate File Existence
@@ -310,6 +307,35 @@ app.get("/questionpapers/:subject", async (req, res) => {
   } catch (error) {
     console.error("⚠ Error fetching papers:", error);
     res.status(500).json({ success: false, message: "Error retrieving data", error });
+  }
+});
+
+
+
+app.get("/api/countPapers/:subject", async (req, res) => {
+  const client = new MongoClient(mongoURI);
+  try {
+    const { subject } = req.params;
+
+    await client.connect();
+    const db = client.db(dbName);
+    const collection = db.collection(collectionName);
+
+    // .countDocuments is more efficient than .find().toArray().length
+    const count = await collection.countDocuments({
+      subject: { $regex: new RegExp(`^${subject}$`, "i") }
+    });
+
+    res.json({ 
+      success: true, 
+      subject, 
+      count: count || 0 
+    });
+  } catch (error) {
+    console.error("⚠ Error counting papers:", error);
+    res.status(500).json({ success: false, message: "Error counting papers", error });
+  } finally {
+    await client.close(); // Good practice to close the connection
   }
 });
 
@@ -521,13 +547,6 @@ app.post("/api/unsave-paper", async (req, res) => {
     res.status(500).json({ success: false, error: error.message });
   }
 });
-
-
-
-
-
-
-
 
 
 
