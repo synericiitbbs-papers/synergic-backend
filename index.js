@@ -129,19 +129,22 @@ app.post('/api/contact', async (req, res) => {
         res.status(500).json({ success: false, error: "Failed to send email" });
     }
 });
-
 app.post("/upload", upload.single("file"), async (req, res) => {
   try {
     // 1. Validate File Existence
-    if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+    if (!req.file) {
+        return res.status(400).json({ error: "No file uploaded" });
+    }
 
-    // 2. Destructure fields including the new 'type'
+    // 2. Destructure fields
     const { subject, year, type, contributorName } = req.body;
     
     if (!year || !subject || !type || !contributorName) {
       // Cleanup uploaded file from local storage if validation fails
       if (req.file.path) fs.unlinkSync(req.file.path);
-      return res.status(400).json({ error: "Missing required fields: year, subject, type, or contributorName" });
+      return res.status(400).json({ 
+        error: "Missing required fields: year, subject, type, or contributorName" 
+      });
     }
 
     // 3. Upload to Google Drive
@@ -178,20 +181,22 @@ app.post("/upload", upload.single("file"), async (req, res) => {
     // 6. Database Operations (Targeting 'synergic' DB)
     const synergicDb = mongoose.connection.useDb("synergic");
 
-    // Define or use an existing Schema
+    // Define Schema including the new isVerified field
     const fileSchema = new mongoose.Schema({
       filename: String,
       driveLink: String,
       yearOfStudy: String,
       subject: String,
-      type: String, // 'Mid Sem', 'End Sem', etc.
+      type: String, 
       contributorName: String,
+      isVerified: { type: Boolean, default: false }, // Default set to False
       uploadedAt: { type: Date, default: Date.now },
     });
 
-    // Ensure model is correctly named as a string "request_details"
-    const FileModel = synergicDb.model("paper_details", fileSchema);
+    // Check if model already exists to prevent "OverwriteModelError"
+    const FileModel = synergicDb.models.paper_details || synergicDb.model("paper_details", fileSchema);
 
+    // Create new entry
     const newFile = new FileModel({
       filename: req.file.originalname,
       driveLink: fileLink,
@@ -199,14 +204,20 @@ app.post("/upload", upload.single("file"), async (req, res) => {
       subject: subject,
       type: type,
       contributorName: contributorName,
+      isVerified: false, // Explicitly setting to false
     });
 
     await newFile.save();
 
-    res.json({ success: true, fileId: fileId, link: fileLink });
+    res.json({ 
+        success: true, 
+        fileId: fileId, 
+        link: fileLink,
+        verifiedStatus: false 
+    });
 
   } catch (error) {
-    // Cleanup local file if an error occurs during the Drive upload process
+    // Cleanup local file if an error occurs during the process
     if (req.file && fs.existsSync(req.file.path)) {
         fs.unlinkSync(req.file.path);
     }
@@ -214,7 +225,6 @@ app.post("/upload", upload.single("file"), async (req, res) => {
     res.status(500).json({ error: "Failed to upload file to system" });
   }
 });
-
 
 
 
