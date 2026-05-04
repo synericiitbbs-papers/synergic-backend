@@ -263,26 +263,39 @@ app.delete("/delete/:id", async (req, res) => {
 });
 
 const subject_details = 'subject_details';
-app.get("/subjects/:branch/:semester", async (req, res) => {
+app.get("/subjects/:course/:branch/:semester", async (req, res) => {
   const client = new MongoClient(mongoURI);
   try {
     await client.connect();
     const db = client.db(dbName);
     const collection = db.collection(subject_details);
 
-    const { branch, semester } = req.params;
+    // Destructure course (e.g., ITEP), branch (e.g., Economics), and semester
+    const { course, branch, semester } = req.params;
+
+    // Use computed property names for a dynamic projection based on the URL
+    const projectionPath = `${course}.${branch}.${semester}`;
 
     const result = await collection.findOne({}, {
-      projection: { _id: 0, [`BTech.${branch}.${semester}`]: 1 }
+      projection: { _id: 0, [projectionPath]: 1 }
     });
 
     console.log("Result:", JSON.stringify(result, null, 2));
 
-    if (!result || !result.BTech || !result.BTech[branch] || !result.BTech[branch][semester]) {
-      return res.status(404).json({ success: false, message: "No subjects found." });
+    // Safely check if the nested path exists in the returned document
+    if (
+      !result || 
+      !result[course] || 
+      !result[course][branch] || 
+      !result[course][branch][semester]
+    ) {
+      return res.status(404).json({ 
+        success: false, 
+        message: `No subjects found for ${course} - ${branch} - ${semester}.` 
+      });
     }
 
-    let subjects = result.BTech[branch][semester];
+    const subjects = result[course][branch][semester];
 
     return res.json({ success: true, subjects });
 
@@ -300,23 +313,30 @@ app.get("/questionpapers/:subject", async (req, res) => {
   try {
     let { subject } = req.params;
     
-    
     await client.connect();
     const db = client.db(dbName);
     const collection = db.collection(collectionName);
 
+    // Updated query to filter for verified papers only
     const papers = await collection.find({
-      subject: { $regex: new RegExp(`^${subject}$`, "i") }
+      subject: { $regex: new RegExp(`^${subject}$`, "i") },
+      isVerified: true 
     }).toArray();
 
     if (papers.length === 0) {
-      return res.json({ success: false, message: "❌ No question papers found." });
+      return res.json({ 
+        success: false, 
+        message: "❌ No verified question papers found for this subject." 
+      });
     }
 
     res.json({ success: true, subject, papers });
   } catch (error) {
     console.error("⚠ Error fetching papers:", error);
     res.status(500).json({ success: false, message: "Error retrieving data", error });
+  } finally {
+    // Added finally block to ensure the connection is closed even on error
+    await client.close();
   }
 });
 
@@ -331,9 +351,10 @@ app.get("/api/countPapers/:subject", async (req, res) => {
     const db = client.db(dbName);
     const collection = db.collection(collectionName);
 
-    // .countDocuments is more efficient than .find().toArray().length
+    // Added isVerified: true to the filter
     const count = await collection.countDocuments({
-      subject: { $regex: new RegExp(`^${subject}$`, "i") }
+      subject: { $regex: new RegExp(`^${subject}$`, "i") },
+      isVerified: true 
     });
 
     res.json({ 
@@ -345,7 +366,7 @@ app.get("/api/countPapers/:subject", async (req, res) => {
     console.error("⚠ Error counting papers:", error);
     res.status(500).json({ success: false, message: "Error counting papers", error });
   } finally {
-    await client.close(); // Good practice to close the connection
+    await client.close(); 
   }
 });
 
