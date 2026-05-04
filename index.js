@@ -340,7 +340,36 @@ app.get("/questionpapers/:subject", async (req, res) => {
   }
 });
 
+app.get("/course-metadata", async (req, res) => {
+  const client = new MongoClient(mongoURI);
+  try {
+    await client.connect();
+    const db = client.db(dbName);
+    const collection = db.collection("course_details");
 
+    // Fetch the document and exclude ONLY the _id
+    // This automatically includes ITEP, BTech, and anything else added later
+    const result = await collection.findOne({}, {
+      projection: { _id: 0 }
+    });
+
+    if (!result) {
+      return res.status(404).json({ 
+        success: false, 
+        message: "No course metadata found in the collection." 
+      });
+    }
+
+    // Returns the full object including all courses, branches, and semesters
+    return res.json(result);
+
+  } catch (error) {
+    console.error("Error fetching dynamic metadata:", error);
+    res.status(500).json({ success: false, error: "Internal server error" });
+  } finally {
+    await client.close();
+  }
+});
 
 app.get("/api/countPapers/:subject", async (req, res) => {
   const client = new MongoClient(mongoURI);
